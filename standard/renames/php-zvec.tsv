@@ -1,0 +1,10 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+task	type:chore
+type:smell	type:refactor
+type:test	type:tests
+severity:critical	priority:critical
+severity:high	priority:high
+severity:medium	priority:medium
+severity:low	priority:low

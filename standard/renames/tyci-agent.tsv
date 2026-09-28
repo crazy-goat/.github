@@ -1,0 +1,7 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+performance	type:performance
+security	type:security
+testing	type:tests
+architecture	type:refactor

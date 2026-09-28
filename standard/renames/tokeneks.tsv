@@ -1,0 +1,11 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+priority:P0	priority:critical
+priority:P1	priority:high
+priority:P2	priority:medium
+priority:P3	priority:low
+area:performance	type:performance
+area:smell	type:refactor
+area:duplication	type:refactor
+area:architecture	type:refactor

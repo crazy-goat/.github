@@ -1,0 +1,12 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+critical	priority:critical
+high	priority:high
+medium	priority:medium
+minor	priority:low
+technical-debt	type:refactor
+code-quality	type:refactor
+security	type:security
+process	type:chore
+no-pow	-

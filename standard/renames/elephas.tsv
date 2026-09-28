@@ -1,0 +1,4 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+ci	type:chore

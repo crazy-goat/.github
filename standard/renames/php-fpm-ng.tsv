@@ -1,0 +1,7 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+refactor	type:refactor
+test	type:tests
+build	type:chore
+track:nice-to-have	priority:low

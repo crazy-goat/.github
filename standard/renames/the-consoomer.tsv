@@ -1,0 +1,11 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+examples	type:docs
+code-quality	type:refactor
+tests	type:tests
+performance	type:performance
+security	type:security
+priority:trivial	priority:low
+blocked-by	status:blocked
+config	area:config

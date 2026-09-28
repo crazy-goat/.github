@@ -1,0 +1,17 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+docs	type:docs
+performance	type:performance
+security	type:security
+build	type:chore
+severity: critical	priority:critical
+severity: high	priority:high
+severity: medium	priority:medium
+severity: low	priority:low
+severity: nitpick	priority:low
+area: ext-c	area:ext-c
+area: ffi	area:ffi
+area: php-api	area:php-api
+area: ci-release	area:ci-release
+area: docs-text	area:docs

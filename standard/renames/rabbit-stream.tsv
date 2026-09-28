@@ -1,0 +1,17 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+feature	type:feature
+performance	type:performance
+tests	type:tests
+security	type:security
+stage:blocked	status:blocked
+stage:needs-user	status:needs-info
+sprint	-
+merge-failed	-
+wizard	-
+insight	-
+size:S	-
+size:M	-
+size:L	-
+size:XL	-

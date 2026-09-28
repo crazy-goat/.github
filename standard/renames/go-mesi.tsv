@@ -1,0 +1,12 @@
+bug	type:bug
+enhancement	type:feature
+documentation	type:docs
+apache	area:apache
+caddy	area:caddy
+nginx	area:nginx
+traefik	area:traefik
+roadrunner	area:roadrunner
+cli	area:cli
+php-extension	area:php-extension
+proxy	area:proxy
+mesi	area:mesi

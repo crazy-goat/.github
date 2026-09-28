@@ -1,0 +1,41 @@
+name: Release (reusable)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## \[/ { found = (index($0, "[" v "]") > 0 || index($0, "[v" v "]") > 0); next }
+            found
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::CHANGELOG.md has no non-empty section for ${version}"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --verify-tag \
+            "${flags[@]}"
