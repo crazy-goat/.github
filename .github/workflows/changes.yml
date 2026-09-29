@@ -1,0 +1,47 @@
+name: Changes (reusable)
+
+# Tells the caller whether a pull request touches anything besides documentation.
+# Heavy CI jobs run only when `code` is `true`. Pushes to branches always give `true`.
+
+on:
+  workflow_call:
+    inputs:
+      docs-regex:
+        description: Extended regex of paths that count as documentation
+        type: string
+        default: '^(.*\.md|docs/.*|LICENSE.*|\.github/ISSUE_TEMPLATE/.*|\.github/pull_request_template\.md|\.gitignore)$'
+    outputs:
+      code:
+        description: '"true" when the change needs the full CI, "false" for documentation-only changes'
+        value: ${{ jobs.changes.outputs.code }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          DOCS_REGEX: ${{ inputs.docs-regex }}
+        run: |
+          set -euo pipefail
+          code=true
+          if [ "$EVENT" = "pull_request" ]; then
+            # On pull_request the checkout is a merge commit; HEAD^1 is the base branch.
+            files="$(git diff --name-only HEAD^1 HEAD)"
+            echo "Changed files:"; echo "$files"
+            if [ -n "$files" ] && ! grep -Ev "$DOCS_REGEX" <<<"$files" >/dev/null; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Full CI needed: $code"

@@ -1,0 +1,65 @@
+name: Docs check (reusable)
+
+# Fast checks for documentation changes: CHANGELOG shape, English-only text,
+# and relative Markdown links.
+
+on:
+  workflow_call:
+    inputs:
+      english-exclude:
+        description: Extended regex of Markdown paths that may contain Polish (translations)
+        type: string
+        default: '(\.pl\.md$|^docs/pl/)'
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: CHANGELOG has an [Unreleased] section
+        run: |
+          if [ -f CHANGELOG.md ] && ! grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::Missing '## [Unreleased]' section (Keep a Changelog)"
+            exit 1
+          fi
+
+      - name: Markdown is written in English
+        env:
+          EXCLUDE: ${{ inputs.english-exclude }}
+        run: |
+          # Polish diacritics outside translations. Add <!-- english-ok --> to a line
+          # that must keep them (for example an author name).
+          status=0
+          while IFS= read -r f; do
+            if grep -nP '[ąćęłńśźżĄĆĘŁŃŚŹŻ]' "$f" | grep -v 'english-ok'; then
+              echo "::error file=$f::Polish text found. Documentation must be in English (translations: *.pl.md or docs/pl/)"
+              status=1
+            fi
+          done < <(git ls-files '*.md' | grep -Ev "$EXCLUDE" || true)
+          exit $status
+
+      - name: Relative Markdown links exist
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, sys
+          files = subprocess.check_output(['git', 'ls-files', '*.md'], text=True).split()
+          bad = 0
+          for f in files:
+              text = open(f, encoding='utf-8').read()
+              text = re.sub(r'```.*?```', '', text, flags=re.S)
+              for m in re.finditer(r'\]\(([^)\s]+)', text):
+                  link = m.group(1).split('#')[0]
+                  if not link or re.match(r'^[a-z][a-z0-9+.-]*:', link, re.I):
+                      continue
+                  target = os.path.normpath(os.path.join(os.path.dirname(f), link.lstrip('/') if link.startswith('/') else link))
+                  if link.startswith('/'):
+                      target = os.path.normpath(link.lstrip('/'))
+                  if not os.path.exists(target):
+                      print(f"::error file={f}::Broken relative link: {m.group(1)}")
+                      bad = 1
+          sys.exit(bad)
+          PY
