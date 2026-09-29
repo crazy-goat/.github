@@ -13,9 +13,9 @@ Everything is written in **English**: code, comments, commits, docs, issues, PRs
 - Every open issue has one `type:*` and one `priority:*` label.
 - Merge with **squash** only, and only when CI (`ci-ok`) is green.
 - Update `CHANGELOG.md` in every PR that changes user-visible behaviour.
-- **Nothing found on the way is lost.** Every problem outside the task becomes a follow-up
-  issue (see [step 8](#8-follow-up-findings)), never a silent fix in the same PR and never
-  just a comment.
+- **Nothing found on the way is lost.** The coder and the reviewer write down every
+  problem they notice, and at the end a verification review checks which of them are
+  real and not yet tracked, and they become issues (see [step 8](#8-follow-up-findings)).
 
 ## 1. Pick an issue
 
@@ -56,6 +56,11 @@ git switch -c <type>/issue-<N>-<short-slug>     # feat/, fix/, docs/, refactor/,
   `fix: handle empty response (#42)`.
 - Update `CHANGELOG.md` under `[Unreleased]` (Added / Changed / Fixed / ...).
 
+**Coder output contract.** Whoever implements the change (a person, or a coder agent) always
+reports: (1) the changed files, (2) the biggest problem met on the way, and (3) every bug or
+weak spot noticed, **including ones outside this issue's scope**, each with `file:line` and a
+suggested fix. Items (2) and (3) go into the findings file (see below), not only into the chat.
+
 ## 4. Review
 
 Review your own diff before opening the PR. A second pair of eyes — a
@@ -65,13 +70,24 @@ Check: correctness, error handling, missing tests, outdated docs, unrelated
 changes, leftovers (debug code, commented-out code), and that everything is in
 English. Fix the findings and review again until there are none.
 
-### Findings outside the task
+### The findings file
 
-Write down every problem you notice that is **not part of this issue**: a bug, a weak
-spot, missing tests, outdated docs, duplicated code. Do not fix it in this PR. Keep a
-short list (file, line, what is wrong, suggested fix) and turn it into issues in
-[step 8](#8-follow-up-findings). Coders and reviewers, human or agent, must report
-such findings in their result.
+Coder and reviewer append their findings to a scratch file that is **not committed** and
+survives a compacted chat:
+
+```bash
+$(git rev-parse --git-dir)/findings.md
+```
+
+One entry per finding: role (`coder` / `review`), `file:line`, what is wrong, severity, and
+whether it is in scope. Do not fix out-of-scope findings in this PR; they are handled in
+[step 8](#8-follow-up-findings).
+
+Every review round reads the file first. For each earlier finding it says: still present,
+fixed, or not a real finding (with evidence). **Every finding gets an answer**, including
+nits: fixed, deliberately not fixed (say why), or not real. Silence is not an answer. A
+finding first seen in round 2 or later escaped round 1, which usually means a check is
+missing, so prefer adding a test over only fixing the line.
 
 ## 5. Open the pull request
 
@@ -114,23 +130,34 @@ Then do [step 8](#8-follow-up-findings). When the merge empties the milestone, g
 
 ## 8. Follow-up findings
 
-Run this step **after every merge**, and do not skip it for small PRs. It turns
-everything found during the work into tracked issues.
+Run this step **after every merge**, also for small PRs. It turns the findings collected
+during the work into tracked issues, without duplicates.
 
-1. Collect the findings: the list from step 3 and step 4, plus a **post-merge review**
-   of the merged change (a review agent with a fresh context, or a teammate). Ask it
-   only for follow-ups: regressions, incomplete fixes, new risks, gaps.
-2. **Check for duplicates first**, for each finding:
+1. **Collect** the candidates from the findings file (coder and review entries), plus the
+   biggest problem the coder reported. Skip findings that were already fixed in this PR.
+2. **Verify each candidate with a read-only review** (a review agent with a fresh context,
+   or a teammate). It must not edit files and must not create, edit or close issues. For
+   every candidate it confirms:
+   1. **The finding is real.** Read the cited lines on the current default branch and check
+      that the behaviour occurs and is reachable. Skip it when it is by design and documented.
+   2. **It is not tracked yet.** Search open **and** closed issues. `gh` lists only 30 items by
+      default, so always pass a limit:
 
-   ```bash
-   gh issue list --state all --search "<keywords>" --json number,title,state \
-     --jq '.[] | "#\(.number): \(.title) [\(.state)]"'
-   ```
+      ```bash
+      gh issue list --state open   --limit 200 --json number,title,labels
+      gh issue list --state closed --limit 200 --json number,title,labels
+      gh search issues --repo {owner}/{repo} --limit 50 "<keywords>"
+      ```
 
-   - An open issue already covers it: add a comment with the link to the merged PR.
-   - A closed issue covers it and the problem is back: open a new issue and link the old one.
-   - Nothing covers it: continue with step 3.
-3. Create the issue, in English:
+      Overlapping scope counts as tracked. Check issues named in `CHANGELOG.md` explicitly.
+   3. **A recommendation:** (a) create a new issue, with a proposed title and labels;
+      (b) skip, already tracked (cite the number; the finding can add a comment there);
+      (c) skip, not real or by design.
+3. **Ask the maintainer** "Create GitHub issue(s) for these findings?" and show the
+   verified list. Creating issues is visible to everybody, so do not do it silently unless
+   the maintainer allowed it in advance. If they decline, record the outcome and finish.
+4. **Create one issue per finding**, in English, with a `type:*` and a `priority:*` label
+   and a milestone:
 
    ```bash
    gh issue create --title "<what is wrong>" --milestone "<milestone>" \
@@ -138,21 +165,21 @@ everything found during the work into tracked issues.
      --body-file finding.md
    ```
 
-   The body follows the issue form: **Description** (what, where as `file:line`, impact,
-   link to the merged PR), **Where to start**, **Definition of done**.
-4. Labels and milestone:
+   The body follows the issue form: **Description** (what, where as `file:line`, impact, link
+   to the merged PR), **Where to start**, **Definition of done**.
 
    | The finding is... | Labels |
    |---|---|
    | small and clear, a newcomer can fix it | `type:*`, `priority:*`, `good first issue` |
    | bigger, but not urgent | `type:*`, `priority:*`, `help wanted` |
-   | urgent (data loss, security, crash) | `priority:critical`, milestone = the lowest open one |
+   | urgent (data loss, security, crash) | `priority:critical`, the lowest open milestone |
    | needs a decision or more information | `status:needs-info` |
 
-   Put it in the lowest open milestone when it must ship with the current release,
-   otherwise in the next one. A `good first issue` without **Where to start** does not
-   help anybody, so fill it in.
-5. Report the numbers of the created and updated issues in the final message of the task.
+   Use the lowest open milestone when it must ship with the current release, otherwise the
+   next one. A `good first issue` without **Where to start** helps nobody, so fill it in.
+5. **Report** the numbers of the created and commented issues in the final message.
+6. If an automated check could have caught the defect, prefer adding the check (test,
+   linter rule) over only writing an issue.
 
 ## Checklist
 
@@ -161,7 +188,8 @@ everything found during the work into tracked issues.
 - [ ] Tests added, all checks pass locally
 - [ ] `CHANGELOG.md` updated
 - [ ] Docs updated
-- [ ] Findings from the work and from the post-merge review became issues (duplicates checked)
+- [ ] Coder and review findings are in the findings file, every finding answered
+- [ ] After the merge: candidates verified (real, not tracked), issues created after approval
 - [ ] PR title is a Conventional Commit and the description has `Closes #<N>`
 - [ ] `ci-ok` is green, PR merged with squash
 - [ ] Local branch deleted, worktrees cleaned up
