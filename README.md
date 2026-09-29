@@ -24,6 +24,7 @@ translations, UTF-8 test data and locale UI strings.
 | `standard/ruleset.json` | Ruleset for the default branch (requires `ci-ok`) |
 | `standard/workflow.md` | Template for `docs/workflow.md` |
 | `standard/release-workflow.md` | Template for `docs/release-workflow.md` |
+| `standard/pick-issue.sh` | Shared script, copied to `bin/pick-issue.sh` in every repository |
 | `standard/renames/<repo>.tsv` | Per-repository label migration map |
 | `bin/sync.sh` | Applies the standard to repositories with `gh api` |
 
@@ -60,3 +61,16 @@ jobs:
 
 It creates the GitHub Release with the notes of the matching `CHANGELOG.md`
 section and fails when the section is missing or empty.
+
+## Shared script: `bin/pick-issue.sh`
+
+`standard/pick-issue.sh` is the single source of truth. Every repository carries an
+identical copy in `bin/pick-issue.sh` (added together with `docs/workflow.md`).
+Do not edit the copies. Change the file here and copy it again:
+
+```bash
+cp standard/pick-issue.sh ../<repo>/bin/pick-issue.sh
+```
+
+It works in any language stack (bash + `gh` only) and detects the repository from
+the current directory.

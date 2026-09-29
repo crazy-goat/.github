@@ -17,16 +17,21 @@ Everything is written in **English**: code, comments, commits, docs, issues, PRs
 ## 1. Pick an issue
 
 ```bash
-gh api repos/{owner}/{repo}/milestones --jq '[.[] | select(.state=="open")] | sort_by(.title) | .[0].title'
-gh issue list --milestone "<lowest milestone>" --state open --limit 100 \
-  --json number,title,labels
+bin/pick-issue.sh                 # top 5 of the lowest open milestone
+bin/pick-issue.sh --top=10        # more candidates
+bin/pick-issue.sh --milestone=v1.2.0
+bin/pick-issue.sh --json          # machine-readable, for agents
 ```
 
-- `gh issue list` returns 30 items by default. Always pass `--limit 100` or more.
-- Pick by priority: `priority:critical` → `high` → `medium` → `low`.
-- Skip issues with `status:blocked` or `status:needs-info`.
-- **Release gate:** if the lowest milestone has no open issues, stop. Cut the
-  release first (see [release-workflow.md](release-workflow.md)), then pick again.
+The script needs only `gh`. It finds the **lowest open milestone**, scores its
+open issues from labels, title, age and comment count (it never reads issue
+bodies, so it is cheap for an agent), and prints the top candidates with the
+score breakdown. You still make the final pick. Blocked issues
+(`status:blocked`, `status:needs-info`) are ranked last.
+
+- **Release gate:** when the lowest milestone has no open issues left, the script
+  exits with code **3** and prints `RELEASE NEEDED`. Stop. Cut the release first
+  (see [release-workflow.md](release-workflow.md)), then run the script again.
   Do not take issues from a higher milestone.
 - Read the issue, including **Where to start** and **Definition of done**.
 
@@ -114,7 +119,7 @@ When the merge empties the milestone, go to
 
 ## Checklist
 
-- [ ] Issue has `type:*`, `priority:*` and a milestone
+- [ ] Issue picked with `bin/pick-issue.sh`; it has `type:*`, `priority:*` and a milestone
 - [ ] Branch name is `<type>/issue-<N>-<slug>`
 - [ ] Tests added, all checks pass locally
 - [ ] `CHANGELOG.md` updated
