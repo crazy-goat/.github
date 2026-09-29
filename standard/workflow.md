@@ -178,6 +178,7 @@ during the work into tracked issues, without duplicates.
    Use the lowest open milestone when it must ship with the current release, otherwise the
    next one. A `good first issue` without **Where to start** helps nobody, so fill it in.
 5. **Report** the numbers of the created and commented issues in the final message.
+   Delete the findings file and clean up the worktree only after this step.
 6. If an automated check could have caught the defect, prefer adding the check (test,
    linter rule) over only writing an issue.
 
