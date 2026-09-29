@@ -13,6 +13,9 @@ Everything is written in **English**: code, comments, commits, docs, issues, PRs
 - Every open issue has one `type:*` and one `priority:*` label.
 - Merge with **squash** only, and only when CI (`ci-ok`) is green.
 - Update `CHANGELOG.md` in every PR that changes user-visible behaviour.
+- **Nothing found on the way is lost.** Every problem outside the task becomes a follow-up
+  issue (see [step 8](#8-follow-up-findings)), never a silent fix in the same PR and never
+  just a comment.
 
 ## 1. Pick an issue
 
@@ -64,19 +67,11 @@ English. Fix the findings and review again until there are none.
 
 ### Findings outside the task
 
-When you notice a problem that is **not part of this issue**, do not fix it in
-the same PR. Open a new issue, in English, with a `type:*` and a `priority:*` label:
-
-| The problem is... | Add label |
-|---|---|
-| small and clear, a newcomer can fix it | `good first issue` |
-| bigger, but not urgent | `help wanted` |
-
-A `good first issue` must have the **Where to start** section filled in (files
-to change, the command that runs the tests) and a **Definition of done**.
-Without them the label does not help anybody.
-
-Assign the new issue to a milestone (usually the next one).
+Write down every problem you notice that is **not part of this issue**: a bug, a weak
+spot, missing tests, outdated docs, duplicated code. Do not fix it in this PR. Keep a
+short list (file, line, what is wrong, suggested fix) and turn it into issues in
+[step 8](#8-follow-up-findings). Coders and reviewers, human or agent, must report
+such findings in their result.
 
 ## 5. Open the pull request
 
@@ -114,8 +109,50 @@ git switch <default-branch> && git pull --ff-only
 gh issue view <N> --json state
 ```
 
-When the merge empties the milestone, go to
-[release-workflow.md](release-workflow.md).
+Then do [step 8](#8-follow-up-findings). When the merge empties the milestone, go to
+[release-workflow.md](release-workflow.md) afterwards.
+
+## 8. Follow-up findings
+
+Run this step **after every merge**, and do not skip it for small PRs. It turns
+everything found during the work into tracked issues.
+
+1. Collect the findings: the list from step 3 and step 4, plus a **post-merge review**
+   of the merged change (a review agent with a fresh context, or a teammate). Ask it
+   only for follow-ups: regressions, incomplete fixes, new risks, gaps.
+2. **Check for duplicates first**, for each finding:
+
+   ```bash
+   gh issue list --state all --search "<keywords>" --json number,title,state \
+     --jq '.[] | "#\(.number): \(.title) [\(.state)]"'
+   ```
+
+   - An open issue already covers it: add a comment with the link to the merged PR.
+   - A closed issue covers it and the problem is back: open a new issue and link the old one.
+   - Nothing covers it: continue with step 3.
+3. Create the issue, in English:
+
+   ```bash
+   gh issue create --title "<what is wrong>" --milestone "<milestone>" \
+     --label "type:bug" --label "priority:medium" --label "good first issue" \
+     --body-file finding.md
+   ```
+
+   The body follows the issue form: **Description** (what, where as `file:line`, impact,
+   link to the merged PR), **Where to start**, **Definition of done**.
+4. Labels and milestone:
+
+   | The finding is... | Labels |
+   |---|---|
+   | small and clear, a newcomer can fix it | `type:*`, `priority:*`, `good first issue` |
+   | bigger, but not urgent | `type:*`, `priority:*`, `help wanted` |
+   | urgent (data loss, security, crash) | `priority:critical`, milestone = the lowest open one |
+   | needs a decision or more information | `status:needs-info` |
+
+   Put it in the lowest open milestone when it must ship with the current release,
+   otherwise in the next one. A `good first issue` without **Where to start** does not
+   help anybody, so fill it in.
+5. Report the numbers of the created and updated issues in the final message of the task.
 
 ## Checklist
 
@@ -124,7 +161,7 @@ When the merge empties the milestone, go to
 - [ ] Tests added, all checks pass locally
 - [ ] `CHANGELOG.md` updated
 - [ ] Docs updated
-- [ ] Findings outside the task became separate issues
+- [ ] Findings from the work and from the post-merge review became issues (duplicates checked)
 - [ ] PR title is a Conventional Commit and the description has `Closes #<N>`
 - [ ] `ci-ok` is green, PR merged with squash
 - [ ] Local branch deleted, worktrees cleaned up
