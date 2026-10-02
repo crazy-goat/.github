@@ -33,6 +33,29 @@ Levels may start low; raise them in small follow-up issues, never lower them.
 Vendored or generated code is excluded. PHP_CodeSniffer (phpcs) is replaced by
 PHP-CS-Fixer when a repository is next touched.
 
+## When the project is itself a PHP extension
+
+A repository that builds a PHP extension can end up with an older build of that
+same extension installed on a contributor's machine (a leftover `make install`, a
+packaged release, an `extension=` line in a `php.ini`). The loaded extension
+defines the very class names that also live under `src/`, and PHP resolves those
+to the loaded extension's classes.
+
+PHPStan and Rector run *inside* a PHP process, so they see what that process has
+loaded, not only what is on disk: the analysis and the refactors are then run
+against classes the working tree never provided, and findings point at code the
+diff did not touch (or the class under `src/` is simply not found). The same
+shadowing breaks the test suite, usually with a `Class "..." not found` for a
+class that is right there in `src/`.
+
+Run PHPStan and Rector with the project's own extension **not** loaded —
+`php -n vendor/bin/phpstan analyse`, the same for Rector, or an ini that does not
+load it — and keep that in `bin/lint.sh`, so humans, agents and CI all get the
+same view. `-n` ignores every `php.ini`, so check that the extensions the project
+genuinely needs are still available (many are compiled in, some are not). A
+loaded extension is invisible in the command line, so document the requirement in
+`AGENTS.md` too — the tests need the same treatment as the linters.
+
 ## CI
 
 The `lint` job in the tests workflow does setup (language runtime, `composer install`,
