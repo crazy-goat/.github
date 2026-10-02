@@ -21,6 +21,21 @@ The `lint` job in the tests workflow does setup (language runtime, `composer ins
 tool installation) and then runs only `bin/lint.sh`. It is gated on
 `needs.changes.outputs.code == 'true'` and required by `ci-ok`.
 
+Pin every tool version in CI. Do not use the `shellcheck` that the `ubuntu-latest`
+image ships; an image update would break `lint` without a change in the repository.
+Install release binaries instead, for example:
+
+```yaml
+- name: Install shellcheck and hadolint
+  run: |
+    mkdir -p "$HOME/.local/bin"
+    curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+      | tar -xJ --strip-components=1 -C "$HOME/.local/bin" shellcheck-v0.11.0/shellcheck
+    curl -fsSL -o "$HOME/.local/bin/hadolint" https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+    chmod +x "$HOME/.local/bin/hadolint"
+    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+```
+
 Composer scripts and Make targets (`composer lint`, `make lint`) call `bin/lint.sh`,
 so humans, agents and CI run the same checks.
 
