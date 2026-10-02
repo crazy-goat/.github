@@ -54,6 +54,22 @@ Install release binaries instead, for example:
     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```
 
+clang-format comes from PyPI through `pipx` (`pip install --user` fails on PEP 668
+images). The runner sets `PIPX_BIN_DIR` and ships its own `/usr/bin/clang-format`, so
+pin the location and call the binary by full path once:
+
+```yaml
+- name: Install clang-format
+  run: |
+    mkdir -p "$HOME/.local/bin"
+    PIPX_BIN_DIR="$HOME/.local/bin" pipx install clang-format==23.1.2
+    "$HOME/.local/bin/clang-format" --version
+    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+```
+
+hadolint 2.12 does not accept text after `# hadolint ignore=DLxxxx`; put the reason on
+the line above.
+
 Composer scripts and Make targets (`composer lint`, `make lint`) call `bin/lint.sh`,
 so humans, agents and CI run the same checks.
 
