@@ -15,3 +15,14 @@ size:S	-
 size:M	-
 size:L	-
 size:XL	-
+ci-allow	-
+stage:analysis	-
+stage:awaiting-approval	-
+stage:backlog	-
+stage:check-pipeline	-
+stage:code-review	-
+stage:coding	-
+stage:create-pr	-
+stage:done	-
+stage:failed	-
+stage:merging	-

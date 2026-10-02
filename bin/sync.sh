@@ -115,6 +115,19 @@ sync_settings() {
     run gh api -X PATCH "repos/$ORG/$repo" --input "$STD/settings.json" >/dev/null
 }
 
+# Workflows from fork pull requests wait for a maintainer's approval.
+sync_fork_approval() {
+    local repo="$1" want="all_external_contributors" current
+    echo "- fork pull request approval"
+    current="$(gh api "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy)"
+    if [ "$current" = "$want" ]; then
+        echo "  already up to date"
+        return 0
+    fi
+    echo "  approval_policy: $current -> $want"
+    run gh api -X PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" -f approval_policy="$want" >/dev/null
+}
+
 sync_ruleset() {
     local repo="$1" id
     echo "- ruleset 'default-branch'"
@@ -132,6 +145,7 @@ for repo in "${REPOS[@]}"; do
     sync_renames "$repo"
     sync_labels "$repo"
     sync_settings "$repo"
+    sync_fork_approval "$repo"
     if [ "$DO_RULESET" = 1 ]; then
         sync_ruleset "$repo"
     fi
