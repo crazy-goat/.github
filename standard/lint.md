@@ -15,6 +15,24 @@ the tools inside depend on the project.
 - It needs only the tools that `bin/worktree-setup.sh` (or the CI setup step) installs.
   A missing tool is a failure, not a skip.
 
+## Minimum tools per language
+
+Every language in a repository gets static analysis, a linter and a formatter check.
+Levels may start low; raise them in small follow-up issues, never lower them.
+
+| Language | Static analysis | Linter / refactoring | Formatter check |
+|---|---|---|---|
+| PHP | PHPStan (target level 8 or higher; a baseline only with a follow-up issue) | Rector (`--dry-run`) | PHP-CS-Fixer (`--dry-run`) |
+| Go | `go vet` | golangci-lint v2 (default linters at least) | gofmt / goimports through golangci-lint formatters |
+| C / C++ | clang-tidy | clang-tidy checks | clang-format (`--dry-run --Werror`) |
+| JS / TS | TypeScript `tsc --noEmit` where TS is used | ESLint | Prettier (`--check`) |
+| Python | ruff (or mypy for typed code) | ruff | ruff format (`--check`) |
+| Shell | shellcheck | shellcheck | — |
+| Dockerfile | hadolint | hadolint | — |
+
+Vendored or generated code is excluded. PHP_CodeSniffer (phpcs) is replaced by
+PHP-CS-Fixer when a repository is next touched.
+
 ## CI
 
 The `lint` job in the tests workflow does setup (language runtime, `composer install`,
