@@ -11,7 +11,7 @@ Everything is written in **English**: code, comments, commits, docs, issues, PRs
 - One issue = one worktree = one branch = one pull request.
 - Work is driven by the **lowest open milestone** (`vX.Y.Z`).
 - Every open issue in a milestone has one `type:*` and one `priority:*` label.
-- Merge with **squash** only, and only when CI (`ci-ok`) is green.
+- Merge with **squash** only, and only when CI (`ci-ok`) is green on a branch that is up to date with the default branch.
 - Update `CHANGELOG.md` in every PR that changes user-visible behaviour.
 - The coder and the reviewer are **subagents** with a fresh context. They talk through
   two scratch files, `findings.md` and `review.md`, in the worktree root. Both are
@@ -124,9 +124,16 @@ When `ci-ok` is green:
 gh pr merge --squash --delete-branch
 ```
 
-If the merge is not possible (conflict, branch out of date), merge or rebase the default
-branch into the worktree branch, resolve the conflicts, run the checks, push, and go back
-to **step 5**.
+The ruleset requires the branch to be **up to date** with the default branch, so `ci-ok`
+has run on exactly the code that lands. If the default branch moved on, update the
+branch and wait for `ci-ok` again (**step 5**):
+
+```bash
+gh pr update-branch            # merges the default branch into the PR branch
+```
+
+On a conflict, merge or rebase the default branch into the worktree branch, resolve the
+conflicts, run the checks, push, and go back to **step 5**.
 
 Then check that the issue was closed (`gh issue view <N> --json state`). When the merge
 empties the milestone, go to [release-workflow.md](release-workflow.md) after step 8.
