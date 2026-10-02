@@ -5,6 +5,7 @@ body:
   - type: markdown
     attributes:
       value: Please write in English. Thanks for the report!
+  # A repository may copy this form and add an "Area" dropdown with its main parts.
   - type: textarea
     id: description
     attributes:
@@ -16,10 +17,25 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: A minimal example is best.
+      description: A minimal example is best (code, config, command).
       placeholder: |
         1. ...
         2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Paste the full error. It is formatted as code automatically.
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Package version, and runtime / OS version if relevant (for example PHP 8.4, Go 1.26, Ubuntu 24.04).
     validations:
       required: true
   - type: textarea
@@ -37,10 +53,3 @@ body:
       placeholder: "- [ ] A test reproduces the bug and now passes"
     validations:
       required: false
-  - type: input
-    id: version
-    attributes:
-      label: Version
-      description: Library or tool version, and PHP / Go / OS version if relevant.
-    validations:
-      required: true

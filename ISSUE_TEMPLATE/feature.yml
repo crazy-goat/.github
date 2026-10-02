@@ -5,13 +5,28 @@ body:
   - type: markdown
     attributes:
       value: Please write in English. Thanks for the idea!
+  # A repository may copy this form and add an "Area" dropdown with its main parts.
   - type: textarea
-    id: description
+    id: problem
     attributes:
-      label: Description
-      description: What problem do you want to solve? What should be added?
+      label: Problem
+      description: What do you want to do that is hard or impossible today?
     validations:
       required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should be added or changed? An example of the API or config you would like helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other solutions or workarounds you considered.
+    validations:
+      required: false
   - type: textarea
     id: where
     attributes:

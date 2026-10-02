@@ -17,7 +17,7 @@ translations, UTF-8 test data and locale UI strings.
 | Path | Purpose |
 |---|---|
 | `CONTRIBUTING.md`, `SECURITY.md` | Default contributor and security policy |
-| `ISSUE_TEMPLATE/`, `pull_request_template.md` | Default issue forms and PR template |
+| `ISSUE_TEMPLATE/`, `pull_request_template.md` | Default issue forms and PR template. A repository without its own `.github/ISSUE_TEMPLATE/` uses these; a repository with its own copies them and may add an "Area" dropdown |
 | `.github/workflows/release.yml` | Reusable workflow: GitHub Release from the CHANGELOG |
 | `standard/labels.json` | The one label list |
 | `standard/settings.json` | Repository settings (squash only, ...) |
@@ -25,6 +25,8 @@ translations, UTF-8 test data and locale UI strings.
 | `standard/workflow.md` | Template for `docs/workflow.md` |
 | `standard/release-workflow.md` | Template for `docs/release-workflow.md` |
 | `standard/pick-issue.sh` | Shared script, copied to `bin/pick-issue.sh` in every repository |
+| `standard/lint.md` | Contract for `bin/lint.sh` and the minimum tools per language |
+| `standard/dependabot.md` | Dependabot settings and `.github/dependabot.yml` rules |
 | `standard/renames/<repo>.tsv` | Per-repository label migration map |
 | `bin/sync.sh` | Applies the standard to repositories with `gh api` |
 

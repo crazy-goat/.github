@@ -128,6 +128,20 @@ sync_fork_approval() {
     run gh api -X PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" -f approval_policy="$want" >/dev/null
 }
 
+# Dependabot alerts and security updates are on everywhere (standard/dependabot.md).
+sync_dependabot() {
+    local repo="$1" fixes
+    echo "- dependabot alerts and security updates"
+    fixes="$(gh api "repos/$ORG/$repo/automated-security-fixes" --jq .enabled 2>/dev/null || echo false)"
+    if [ "$fixes" = "true" ]; then
+        echo "  already up to date"
+        return 0
+    fi
+    echo "  security updates: $fixes -> true"
+    run gh api -X PUT "repos/$ORG/$repo/vulnerability-alerts" >/dev/null
+    run gh api -X PUT "repos/$ORG/$repo/automated-security-fixes" >/dev/null
+}
+
 sync_ruleset() {
     local repo="$1" id
     echo "- ruleset 'default-branch'"
@@ -146,6 +160,7 @@ for repo in "${REPOS[@]}"; do
     sync_labels "$repo"
     sync_settings "$repo"
     sync_fork_approval "$repo"
+    sync_dependabot "$repo"
     if [ "$DO_RULESET" = 1 ]; then
         sync_ruleset "$repo"
     fi
