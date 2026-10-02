@@ -50,11 +50,19 @@ score breakdown. You still make the final pick. Blocked issues
 
 ```bash
 bin/worktree.sh <issue-number>          # optional 2nd argument: feat|fix|docs|refactor|test|chore
-cd ../<repo>-worktrees/issue-<N>
+cd <worktree path printed by the script>
 ```
 
-The script fetches the default branch and creates the worktree
-`../<repo>-worktrees/issue-<N>` on branch `<type>/issue-<N>-<slug>`. It also:
+The script fetches the default branch and creates the worktree `issue-<N>` on branch
+`<type>/issue-<N>-<slug>`. The worktree goes to:
+
+- `<dir>/<repo>/issue-<N>` if `WORKTREES_DIR=<dir>` is set,
+- else `../.worktrees/<repo>/issue-<N>` if a `.worktrees` directory exists next to the
+  clone (a workspace with several clones side by side),
+- else `../<repo>-worktrees/issue-<N>`.
+
+The main checkout stays on the default branch and is not edited; it is for reading only.
+The script also:
 
 - creates empty `findings.md` and `review.md` (both gitignored),
 - writes `.env.worktree` with a unique `COMPOSE_PROJECT_NAME` and a free host port for

@@ -4,7 +4,7 @@
 # Usage: bin/worktree.sh <issue-number> [type]
 #   type: feat|fix|docs|refactor|test|chore (default: derived from the type:* label)
 #
-# Creates ../<repo>-worktrees/issue-<N> on branch <type>/issue-<N>-<slug>, empty
+# Creates <worktrees>/issue-<N> (see below) on branch <type>/issue-<N>-<slug>, empty
 # findings.md and review.md (both gitignored), a unique COMPOSE_PROJECT_NAME and
 # free host ports in .env.worktree, then runs the optional bin/worktree-setup.sh.
 set -euo pipefail
@@ -12,7 +12,8 @@ set -euo pipefail
 issue="${1:?usage: bin/worktree.sh <issue-number> [type]}"
 type="${2:-}"
 
-root="$(git rev-parse --show-toplevel)"
+# The main checkout, also when this runs inside one of its worktrees.
+root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 repo="$(basename "$root")"
 default="$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)"
 
@@ -33,7 +34,18 @@ fi
 
 slug="$(tr '[:upper:]' '[:lower:]' <<<"$title" | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//' | cut -c1-40 | sed 's/-$//')"
 branch="$type/issue-$issue-$slug"
-dir="$(dirname "$root")/$repo-worktrees/issue-$issue"
+# Worktrees live in <parent>/.worktrees/<repo>/ when that directory exists (a
+# workspace with several clones side by side), otherwise next to the clone in
+# ../<repo>-worktrees/. WORKTREES_DIR=<dir> puts them in <dir>/<repo>/ instead.
+parent="$(dirname "$root")"
+if [[ -n "${WORKTREES_DIR:-}" ]]; then
+  base="$WORKTREES_DIR/$repo"
+elif [[ -d "$parent/.worktrees" ]]; then
+  base="$parent/.worktrees/$repo"
+else
+  base="$parent/$repo-worktrees"
+fi
+dir="$base/issue-$issue"
 
 git -C "$root" fetch origin "$default"
 git -C "$root" worktree add -b "$branch" "$dir" "origin/$default"

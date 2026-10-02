@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
 # Remove the worktree of a merged issue and return to a fresh default branch.
 #
-# Usage: bin/worktree-done.sh <issue-number>     (run from the main checkout)
+# Usage: bin/worktree-done.sh <issue-number>
 set -euo pipefail
 
 issue="${1:?usage: bin/worktree-done.sh <issue-number>}"
 
-root="$(git rev-parse --show-toplevel)"
+# The main checkout, also when this runs inside one of its worktrees.
+root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 repo="$(basename "$root")"
 default="$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)"
-dir="$(dirname "$root")/$repo-worktrees/issue-$issue"
+# Worktrees live in <parent>/.worktrees/<repo>/ when that directory exists (a
+# workspace with several clones side by side), otherwise next to the clone in
+# ../<repo>-worktrees/. WORKTREES_DIR=<dir> puts them in <dir>/<repo>/ instead.
+parent="$(dirname "$root")"
+if [[ -n "${WORKTREES_DIR:-}" ]]; then
+  base="$WORKTREES_DIR/$repo"
+elif [[ -d "$parent/.worktrees" ]]; then
+  base="$parent/.worktrees/$repo"
+else
+  base="$parent/$repo-worktrees"
+fi
+dir="$base/issue-$issue"
 
 if [[ ! -d "$dir" ]]; then
   echo "No worktree at $dir" >&2
