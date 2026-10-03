@@ -45,9 +45,8 @@ a local run and CI can disagree with no commit in between.
 **How** a loaded extension changes things differs per repository, so find out which
 case is yours before changing anything. None of the three PHP extensions below has a
 class-name collision — none of them shadows a class the working tree defines. But one of
-them turns `lint` **red on a developer's machine and green in CI**, which is worse than a
-collision, one hides analysis errors, and one is only reached at runtime. None of them is
-harmless.
+them turns `lint` **red on a developer's machine and green in CI**, one hides analysis
+errors, and one is only reached at runtime. None of them is harmless.
 
 - **The extension breaks both tools, and CI cannot show it.** `ScanMePHP`:
   `NativeEncoderCore` is defined *only* by `php-ext/native_encoder.c`, and
@@ -63,15 +62,19 @@ harmless.
   | extension absent | exit 0, `[OK] Rector is done!` | exit 0, `[OK] No errors` |
 
   The cause is an argument-info declaration, not a name clash:
-  `php-ext/native_encoder.c:40-41` gives the return type as an escaped quoted **string**
-  in `ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(…, "CrazyGoat\\ScanMePHP\\Matrix", 0)`
-  rather than as a class entry, and BetterReflection turns that into a stub that does not
-  parse. Note that excluding the file in `phpstan.neon` does **not** protect you:
-  `tests/ExtensionNameConsistencyTest.php` still fails, because other files reference
-  `NativeEncoder` and `NativeEncoderCore`. So there are two fixes, and the isolation below
-  is only the first: isolate the tools *and* declare the return type as a class entry.
-  Until both land, treat a local lint failure in this repository as possibly your own
-  `php.ini`.
+  `php-ext/native_encoder.c:40-41` writes the return type as a **quoted** name in
+  `ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(…, "CrazyGoat\\ScanMePHP\\Matrix", 0)`.
+  The macro is already the right one — it stringizes its argument into a class
+  constant — but the quotes stay part of the name, so reflection reports the return
+  type as `"CrazyGoat\\ScanMePHP\\Matrix"` *with the quotes in it*, `class_exists()`
+  on that string is false, and BetterReflection builds a stub that does not parse.
+  Drop the quotes and nothing else: compare `php-zvec/php-ext/zvec_doc.cc:596`
+  (`…, ZVecDoc, 0`) and `ladybug-php/ext/ladybug_arginfo.h:34`. Note that excluding the
+  file in `phpstan.neon` does **not** protect you: `tests/ExtensionNameConsistencyTest.php`
+  still fails, because other files reference `NativeEncoder` and `NativeEncoderCore`.
+  So there are two fixes, and the isolation below is only the first: isolate the tools
+  *and* drop those quotes. Until both land, treat a local lint failure in this
+  repository as possibly your own `php.ini`.
 - **The extension's names live in a separate namespace and the analysis reads a stub.**
   `ladybug-php`: `ext/` registers seven classes under `Ladybug\Ext\` while the library is
   `Ladybug\`, and `phpstan.neon` analyses `src/` against
@@ -91,10 +94,12 @@ harmless.
   (`php-zvec` #188).
 
 A genuine collision — the extension defining the same class name the library defines in
-`src/`, so the analysis silently runs against the installed build instead — would be the
-worst case of all, because it moves findings onto code nobody touched. Check for it, by
-comparing the classes `php-ext` registers with the `src/` namespace in `composer.json`,
-before assuming your repository behaves like the three above.
+`src/`, so the analysis silently runs against the installed build instead — is a fourth
+shape, and it would move findings onto code nobody touched. None of our three
+repositories has it, but check before assuming yours does not either: compare the classes
+`php-ext` registers with the `src/` namespace in `composer.json`. The case above that
+needs fixing first is not this one, though — a lint gate that is red locally and green in
+CI is found on the first run; a shadowed class is not found at all.
 
 ### Isolating the tools, when a repository needs it
 

@@ -32,7 +32,8 @@
 #      stop the workflow, cut the release, close the milestone, re-run
 #   4  MILESTONE EMPTY: the target milestone has no issues at all, open or
 #      closed — there is nothing to release and nothing to pick; assign
-#      issues to it, or close it so the next one is picked
+#      issues to it, or close it so the next one is picked. With an explicit
+#      --milestone, closing it does not advance the selection.
 #
 # Release rule: the workflow works milestone-by-milestone, lowest first.
 # A milestone with work finished (0 open, at least 1 closed) ends the picking
@@ -441,11 +442,19 @@ main() {
             local number="$target_number"
             [ -n "$number" ] || number="<number>"
             # A milestone title is free text: it can contain ", $, a backtick
-            # or a backslash. Paste the command below verbatim and an
+            # or an apostrophe. Paste the command below verbatim and an
             # unescaped title either breaks the shell or runs something the
-            # user did not type. Quote it for the shell once, here.
+            # user did not type. Wrap it in single quotes, which is the only
+            # quoting that is byte-for-byte safe for a non-ASCII title: bash
+            # 3.2's printf %q rewrites UTF-8 as $'\342\200\223', and in --json
+            # mode that truncation also cuts the message off mid-command.
+            # Single quotes suppress everything, so only the apostrophe needs
+            # care: close the quote, emit an escaped one, reopen. Escape it
+            # before wrapping, and do it in sed rather than in a nested
+            # parameter expansion, which shellcheck cannot parse.
             local quoted_title
-            printf -v quoted_title '%q' "$target_title"
+            # shellcheck disable=SC1003  # the '\'' below is intended
+            quoted_title="'$(printf '%s' "$target_title" | sed "s/'/'\\\\''/g")'"
             local after
             if [ -n "$MILESTONE" ]; then
                 after="$(printf 'You asked for --milestone=%s, so closing it does not make this script pick another one: drop the flag, or name a milestone that has issues.\n' "$MILESTONE")"
