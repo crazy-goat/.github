@@ -80,25 +80,24 @@ runs. 2.6.5 added PHPStan 2.2.10 scope support but is not shown to run 2.2.16.
 ### Rollout
 
 Adding the group is the fix, and as of 2026-10-03 no repository has it — checked in all
-17. Three pull requests are open and red, and **the group does nothing for any of them.**
-A group changes what Dependabot opens on its *next* run; it does not touch a pull request
-that is already open, and it cannot absorb one:
+17. Three pull requests are open and red, and **the group does not fix them**: a group
+changes what Dependabot opens on its *next* run, where it **replaces** the open
+single-dependency pull requests with one combined bump. So the order is: add the group,
+let Dependabot open the grouped pull request, and close the ones it supersedes. What
+each of the three is actually blocked on:
 
 - `piper-php` #6 — bumps `phpstan/phpstan` 2.1.45 → 2.2.16 against a pinned
-  `rector/rector` 2.3.9.
+  `rector/rector` 2.3.9. The grouped bump fixes this one, because it moves Rector too.
 - `rabbit-stream` #573 — widens `phpstan/phpstan` from `~2.1.0` to `~2.1.0 || ~2.2.0`,
-  against `rector/rector` `~2.4.0`.
-- `fdb-php` #134 — bumps `rector/rector` 2.6.3 → 2.6.7 only. PHPStan is already on
-  2.2.16 here, so there is nothing for the group to bring along.
+  against `rector/rector` `~2.4.0`. Same: the grouped bump fixes the crash.
+- `fdb-php` #134 — bumps `rector/rector` 2.6.3 → 2.6.7 only, and PHPStan is already on
+  2.2.16 here, so the group changes nothing for it. It needs a one-line code fix.
 
-Rebasing does not help either. `piper-php` #6 has been rebuilt and re-run three times
-(head SHAs `26b558f`, `2fe528c`, `af3b855`, all failing), the last after an explicit
-`@dependabot rebase` on 2026-10-03, and it stayed red — the blocker is a version pin in
-`composer.json`, not the base branch.
-
-So the group pays off on the **next** bump, not on these. The order is: add the group,
-close the superseded single-dependency pull requests, and let Dependabot open the
-combined one.
+Rebasing is not the answer either. `piper-php` #6 has been rebuilt and re-run three
+times (head SHAs `26b558f`, `2fe528c`, `af3b855`, all failing), the last after an
+explicit `@dependabot rebase` on 2026-10-03, and it stayed red — the blocker is a
+version pin in `composer.json`, not the base branch. No new upstream release is needed
+to unblock any of the three; Rector 2.6.7 is already out.
 
 ### What the group does *not* do
 
@@ -117,10 +116,10 @@ pull requests above are in exactly that state:
 A grouped bump can also be larger than the single bump it replaces. `piper-php`'s
 `rector.php` has no `->withSkip()` at all and analyses four paths (`src`, `examples`,
 `bin`, `tests`) with the `DEAD_CODE`, `CODE_QUALITY`, `TYPE_DECLARATION`,
-`PRIVATIZATION` and `EARLY_RETURN` sets, so taking Rector from 2.3.9 to 2.6.7 is 19 patch
-releases across a minor bump and every rule added on the way applies to all four paths.
-Expect more than one changed file, and budget for a fix pass and a review of the diff —
-not for a version-line edit.
+`PRIVATIZATION` and `EARLY_RETURN` sets, so taking Rector from 2.3.9 to 2.6.7 crosses
+**25 releases over three minor bumps** (2.4 → 2.6) and every rule added on the way
+applies to all four paths. Expect more than one changed file, and budget for a fix pass
+and a review of the diff — not for a version-line edit.
 
 ### Why PHP-CS-Fixer is not in the group
 

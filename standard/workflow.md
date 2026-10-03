@@ -1,9 +1,8 @@
 # Workflow: issue → worktree → code → review → PR → CI → merge → findings → cleanup
 
 This is the development process of every `crazy-goat` repository. Project
-commands (build, lint, tests) live in `AGENTS.md` at the root of the repository this
-file is copied into, and are not repeated here. The process is the same for humans and
-for coding agents.
+commands (build, lint, tests) live in [`AGENTS.md`](../AGENTS.md) and are not
+repeated here. The process is the same for humans and for coding agents.
 
 Everything is written in **English**: code, comments, commits, docs, issues, PRs.
 

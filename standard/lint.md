@@ -42,45 +42,56 @@ installed on a contributor's machine: a leftover `make install`, a release insta
 lint result depends on what that process has loaded and not only on the working tree —
 a local run and CI can disagree with no commit in between.
 
-**How** a loaded extension changes the analysis differs per repository. The
-class-name collision is one shape, not the rule, and the isolation you need depends
-on which one is yours.
+**How** a loaded extension changes things differs per repository, so find out which
+case is yours before changing anything. None of the three PHP extensions below has a
+class-name collision — none of them shadows a class the working tree defines. One of
+them can change a lint result, and one is only reached at runtime.
 
-- **The extension registers the library's own class names.** PHP resolves those names
-  to the loaded extension, so the analysis runs against the installed build instead of
-  the working tree and findings point at code the diff never touched. This is
-  `ScanMePHP`: `php-ext/native_encoder.c` registers
-  `CrazyGoat\ScanMePHP\NativeEncoderCore`, the same namespace as `src/`.
+- **The library extends a class only the extension defines.** `ScanMePHP`:
+  `src/NativeEncoder.php` declares `NativeEncoder extends NativeEncoderCore`, and
+  `NativeEncoderCore` is defined *only* by `php-ext/native_encoder.c` — and only inside
+  `if (extension_loaded('scanmeqr'))`, with a pure-PHP `else` branch. The dependency
+  runs the other way round: `php-ext/composer.json` says the extension "exposes only
+  `NativeEncoderCore`, which builds a `CrazyGoat\ScanMePHP\Matrix` and therefore needs
+  the library loaded". The lint result is unaffected, because `phpstan.neon` excludes
+  `src/NativeEncoder.php` from analysis. What is machine-dependent here is the
+  **runtime**: which of the two implementations exists depends on what is loaded.
 - **The extension's names live in a separate namespace and the analysis reads a stub.**
-  No collision, but the loaded extension **hides what the stub omits**. This is
-  `ladybug-php`: `ext/` registers seven classes under `Ladybug\Ext\` while the library
-  is `Ladybug\`, and `phpstan.neon` analyses `src/` against
+  `ladybug-php`: `ext/` registers seven classes under `Ladybug\Ext\` while the library is
+  `Ladybug\`, and `phpstan.neon` analyses `src/` against
   `stubs/ladybug-ext.stub.php`, which declares those seven classes plus the 21 global
-  `ladybug_*` functions. Delete `Result` from the stub, or `ladybug_version()`, and
-  PHPStan reports "class not found" / "function not found" with no extension and
-  nothing at all with it — so a stub that has fallen behind the extension passes
-  locally and fails in CI. Change a signature the stub *already* declares and the stub
-  still wins: only missing entries are hidden. (`ladybug-php` #139 tracks keeping the
-  two in agreement.)
-- **Neither — the extension is only reached at runtime.** This is `php-zvec`: its
-  `php-ext/` registers 15 types (12 classes, 3 interfaces) in the **global** namespace
-  while `src/` is `CrazyGoat\ZVec\`, so there is no collision, and PHPStan and Rector
-  parse `src/` without ever running the guard. What breaks there is the **test
-  suite**, at runtime: `src/ZVec.php:9` returns early when
-  `extension_loaded('zvec')`, so the barrel file never loads the FFI-only classes
+  `ladybug_*` functions. Nothing collides, but the loaded extension **hides what the
+  stub omits**. That last part is measured and recorded in that repository's
+  `AGENTS.md`: drop `Result` from the stub, or `ladybug_version()`, and PHPStan reports
+  "class not found" / "function not found" with no extension and nothing at all with it,
+  so a stub that has fallen behind the extension passes locally and fails in CI. Change
+  a signature the stub *already* declares and the stub still wins; only missing entries
+  are hidden. (`ladybug-php` #139 tracks keeping the two in agreement.)
+- **The extension is reached only at runtime.** `php-zvec`: `php-ext/` registers 15
+  types (12 classes, 3 interfaces) in the **global** namespace while `src/` is
+  `CrazyGoat\ZVec\`. PHPStan and Rector parse `src/` and never run the guard; what
+  breaks is the **test suite**, at `src/ZVec.php:9`, which returns early when
+  `extension_loaded('zvec')` so the barrel file never loads the FFI-only classes
   (`php-zvec` #188).
+
+A genuine collision — the extension defining the same class name the library defines in
+`src/`, so the analysis silently runs against the installed build instead — would be the
+worst case of all, because it moves findings onto code nobody touched. Check for it, by
+comparing the classes `php-ext` registers with the `src/` namespace in `composer.json`,
+before assuming your repository behaves like the three above.
 
 ### Isolating the tools, when a repository needs it
 
-Not with `php -n`. It looks right and it is not:
+Not with `php -n`. It looks right and it is not, for two separate reasons (`php-zvec`
+#259 and `ladybug-php`'s `AGENTS.md` both record both):
 
 - it drops the whole ini scan directory, so on a `setup-php` image PHPStan loses `Phar`
-  and Rector loses `PhpToken` and **both fail to start** with `Class "Phar" not found`
-  and `Class "PhpToken" not found` — which is what happened on the first push of
-  `php-zvec` #259;
+  and Rector loses `PhpToken` and **both fail to start**, with `Class "Phar" not found`
+  and `Class "PhpToken" not found` — which is how the first push of `php-zvec` #259
+  failed `lint`;
 - and it does not reach the processes PHPStan starts for itself. PHPStan restarts with
   `PHP_BINARY -d …` and spawns parallel workers, neither carrying `-n`, so those
-  processes load `php.ini` again (seen with `ps -A` during a run).
+  processes load `php.ini` again.
 
 Use an **environment variable** instead, because those are inherited:
 
@@ -95,15 +106,17 @@ entries name their extension without a path, so without it those extensions fail
 load), **`memory_limit`** (otherwise the built-in 128M applies), and **FFI** where the
 analysis would otherwise have none. `php-zvec`'s `bin/lint.sh` does all of that in one
 `php_analysis` helper; ask for FFI in the CI `lint` job as well (`extensions: ffi`).
+Note the residual gap this leaves: an `extension=` line in `php.ini` no longer reaches
+the tools, one in a `conf.d` file still would.
 
 When a lint run disagrees with CI, `php -m` under the same ini settings is the first
 thing to check — run any other way it answers a different question.
 
 A loaded extension is invisible in the command line, so document the requirement in
-`AGENTS.md` too: the test suite needs the same treatment as the linters. Say there
-which of the three shapes above applies, and do not claim the isolation fixed a wrong
-result unless you can point at one — isolating the tools removes a machine dependency,
-it does not by itself prove anything was wrong before.
+`AGENTS.md` too: the test suite needs the same treatment as the linters. Say there which
+of the cases above applies, and do not claim the isolation fixed a wrong result unless
+you can point at one — isolating the tools removes a machine dependency, it does not by
+itself prove anything was wrong before.
 
 ## PHP tool versions: `composer.lock` (proposed — needs Piotr's sign-off)
 
