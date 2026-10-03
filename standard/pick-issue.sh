@@ -440,6 +440,12 @@ main() {
             # closing it does NOT move the caller on to the next one.
             local number="$target_number"
             [ -n "$number" ] || number="<number>"
+            # A milestone title is free text: it can contain ", $, a backtick
+            # or a backslash. Paste the command below verbatim and an
+            # unescaped title either breaks the shell or runs something the
+            # user did not type. Quote it for the shell once, here.
+            local quoted_title
+            printf -v quoted_title '%q' "$target_title"
             local after
             if [ -n "$MILESTONE" ]; then
                 after="$(printf 'You asked for --milestone=%s, so closing it does not make this script pick another one: drop the flag, or name a milestone that has issues.\n' "$MILESTONE")"
@@ -447,8 +453,8 @@ main() {
                 after='Closing it is safe: the next run picks the next milestone.
 '
             fi
-            message="$(printf 'Milestone %s (#%s) has no issues at all (0 open, 0 closed) — there is nothing to release and nothing to pick. Either assign issues to it, or close it:\n\n  1. Assign issues:  gh issue edit <N> --milestone "%s"\n  2. Or close it:     gh api --method PATCH repos/%s/milestones/%s -f state=closed\n  3. Re-run this script afterwards.\n\n%s' \
-                "$target_title" "$number" "$target_title" "$REPO" "$number" "$after")"
+            message="$(printf 'Milestone %s (#%s) has no issues at all (0 open, 0 closed) — there is nothing to release and nothing to pick. Either assign issues to it, or close it:\n\n  1. Assign issues:  gh issue edit <N> --milestone %s\n  2. Or close it:     gh api --method PATCH repos/%s/milestones/%s -f state=closed\n  3. Re-run this script afterwards.\n\n%s' \
+                "$target_title" "$number" "$quoted_title" "$REPO" "$number" "$after")"
             if [ "$JSON_OUT" -eq 1 ]; then
                 printf '{\n  "milestone_empty": true,\n  "release_needed": false,\n  "message": "%s",\n  "milestone": {\n    "title": "%s",\n    "open_issues": 0,\n    "closed_issues": 0\n  }\n}\n' \
                     "$(json_escape "$message")" "$(json_escape "$target_title")"

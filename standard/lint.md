@@ -44,24 +44,34 @@ a local run and CI can disagree with no commit in between.
 
 **How** a loaded extension changes things differs per repository, so find out which
 case is yours before changing anything. None of the three PHP extensions below has a
-class-name collision — none of them shadows a class the working tree defines. One of
-them changes neither analysis step, one can change a lint result, and one is only
-reached at runtime.
+class-name collision — none of them shadows a class the working tree defines. But one of
+them turns `lint` **red on a developer's machine and green in CI**, which is worse than a
+collision, one hides analysis errors, and one is only reached at runtime. None of them is
+harmless.
 
-- **The library extends a class only the extension defines.** `ScanMePHP`:
+- **The extension breaks both tools, and CI cannot show it.** `ScanMePHP`:
   `NativeEncoderCore` is defined *only* by `php-ext/native_encoder.c`, and
   `src/NativeEncoder.php` only `extends` it — inside `if (extension_loaded('scanmeqr'))`,
-  with a pure-PHP `else` branch. The dependency runs the other way round:
-  `php-ext/composer.json` says the extension "exposes only `NativeEncoderCore`, which
-  builds a `CrazyGoat\ScanMePHP\Matrix` and therefore needs the library loaded". Neither
-  analysis step sees a difference. PHPStan excludes the file outright. Rector does
-  process it — `rector.php` analyses `src/` and skips only `clib`, `vendor`, `php-ext`
-  and one rule class — but its `--dry-run` output is identical with `scanmeqr` loaded and
-  without it. (Measured with the extension built from `php-ext/`; that comparison is only
-  meaningful because Rector does reach the file, which was confirmed by narrowing
-  `withPaths` to it and watching a deliberately introduced finding get reported the same
-  way in both runs.) What the extension does change is the **runtime**: which of the two
-  implementations exists.
+  with a pure-PHP `else` branch. Nothing collides, yet with the extension loaded and
+  inherited by the analysis processes, **`vendor/bin/rector --dry-run` and
+  `vendor/bin/phpstan analyse` both exit non-zero**, and CI, which has no `scanmeqr`
+  installed, is green on both. Measured, with the extension built from `php-ext/`:
+
+  | | `rector --dry-run` | `phpstan analyse` |
+  |---|---|---|
+  | extension loaded | exit 1, `AST failed to parse` on `src/NativeEncoder.php`, `src/QRCode.php`, `tests/ExtensionNameConsistencyTest.php` | exit 1, `Found 1 error`, internal error, `Result is incomplete because of severe errors` |
+  | extension absent | exit 0, `[OK] Rector is done!` | exit 0, `[OK] No errors` |
+
+  The cause is an argument-info declaration, not a name clash:
+  `php-ext/native_encoder.c:40-41` gives the return type as an escaped quoted **string**
+  in `ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(…, "CrazyGoat\\ScanMePHP\\Matrix", 0)`
+  rather than as a class entry, and BetterReflection turns that into a stub that does not
+  parse. Note that excluding the file in `phpstan.neon` does **not** protect you:
+  `tests/ExtensionNameConsistencyTest.php` still fails, because other files reference
+  `NativeEncoder` and `NativeEncoderCore`. So there are two fixes, and the isolation below
+  is only the first: isolate the tools *and* declare the return type as a class entry.
+  Until both land, treat a local lint failure in this repository as possibly your own
+  `php.ini`.
 - **The extension's names live in a separate namespace and the analysis reads a stub.**
   `ladybug-php`: `ext/` registers seven classes under `Ladybug\Ext\` while the library is
   `Ladybug\`, and `phpstan.neon` analyses `src/` against
@@ -95,9 +105,13 @@ Not with `php -n`. It looks right and it is not, for two separate reasons (`php-
   and Rector loses `PhpToken` and **both fail to start**, with `Class "Phar" not found`
   and `Class "PhpToken" not found` — which is how the first push of `php-zvec` #259
   failed `lint`;
-- and it does not reach the processes PHPStan starts for itself. PHPStan restarts with
-  `PHP_BINARY -d …` and spawns parallel workers, neither carrying `-n`, so those
-  processes load `php.ini` again.
+- and it does not reach the processes the tools start for themselves. PHPStan restarts with
+  `PHP_BINARY -d …` and spawns parallel workers, neither carrying `-n`, so those processes
+  load `php.ini` again. Rector does the same, and **`php -d extension=…` is not an escape
+  either**: `WorkerCommandLineFactory.php:46` rebuilds the worker command as
+  `[PHP_BINARY, $mainScript]` and drops the `-d` flags, so `-d` applies to the process you
+  started and to nothing else. A measurement taken that way compares "without the
+  extension" with "without the extension" and reports a clean difference that is not there.
 
 Use an **environment variable** instead, because those are inherited:
 
