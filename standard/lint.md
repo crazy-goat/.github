@@ -45,17 +45,23 @@ a local run and CI can disagree with no commit in between.
 **How** a loaded extension changes things differs per repository, so find out which
 case is yours before changing anything. None of the three PHP extensions below has a
 class-name collision — none of them shadows a class the working tree defines. One of
-them can change a lint result, and one is only reached at runtime.
+them changes neither analysis step, one can change a lint result, and one is only
+reached at runtime.
 
 - **The library extends a class only the extension defines.** `ScanMePHP`:
-  `src/NativeEncoder.php` declares `NativeEncoder extends NativeEncoderCore`, and
-  `NativeEncoderCore` is defined *only* by `php-ext/native_encoder.c` — and only inside
-  `if (extension_loaded('scanmeqr'))`, with a pure-PHP `else` branch. The dependency
-  runs the other way round: `php-ext/composer.json` says the extension "exposes only
-  `NativeEncoderCore`, which builds a `CrazyGoat\ScanMePHP\Matrix` and therefore needs
-  the library loaded". The lint result is unaffected, because `phpstan.neon` excludes
-  `src/NativeEncoder.php` from analysis. What is machine-dependent here is the
-  **runtime**: which of the two implementations exists depends on what is loaded.
+  `NativeEncoderCore` is defined *only* by `php-ext/native_encoder.c`, and
+  `src/NativeEncoder.php` only `extends` it — inside `if (extension_loaded('scanmeqr'))`,
+  with a pure-PHP `else` branch. The dependency runs the other way round:
+  `php-ext/composer.json` says the extension "exposes only `NativeEncoderCore`, which
+  builds a `CrazyGoat\ScanMePHP\Matrix` and therefore needs the library loaded". Neither
+  analysis step sees a difference. PHPStan excludes the file outright. Rector does
+  process it — `rector.php` analyses `src/` and skips only `clib`, `vendor`, `php-ext`
+  and one rule class — but its `--dry-run` output is identical with `scanmeqr` loaded and
+  without it. (Measured with the extension built from `php-ext/`; that comparison is only
+  meaningful because Rector does reach the file, which was confirmed by narrowing
+  `withPaths` to it and watching a deliberately introduced finding get reported the same
+  way in both runs.) What the extension does change is the **runtime**: which of the two
+  implementations exists.
 - **The extension's names live in a separate namespace and the analysis reads a stub.**
   `ladybug-php`: `ext/` registers seven classes under `Ladybug\Ext\` while the library is
   `Ladybug\`, and `phpstan.neon` analyses `src/` against
@@ -136,7 +142,7 @@ No composer.lock file present. Updating dependencies to latest instead of
 installing from lock file. See https://getcomposer.org/install for more information.
 ```
 
-It has the concrete loss: in `ScanMePHP` a newer Rector (2.6.6) reported
+There is a concrete case: in `ScanMePHP` a newer Rector (2.6.6) reported
 `FlipNegatedTernaryInstanceofRector` in code nobody had changed.
 
 ### Proposal: commit `composer.lock`, and keep a caret range in `require-dev`
@@ -192,15 +198,15 @@ edges.
 
 ### The trade-off, stated
 
-|                                 | commit the lock    | exact pins in `require-dev` |
-|---------------------------------|--------------------|-----------------------------|
-| direct dev tools frozen         | yes                | yes                         |
-| transitive dev deps frozen      | yes                | no                          |
-| `composer install` repeatable   | yes                | no                          |
-| Dependabot still opens PRs      | yes                | yes                         |
-| diff size                       | large, lock churn  | tiny                        |
-| conflicts on parallel branches  | possible           | none                        |
-| **tests run only against the locked tree** | **yes** | no              |
+|                                        | commit the lock    | exact pins in `require-dev` |
+|----------------------------------------|--------------------|-----------------------------|
+| direct dev tools frozen                | yes                | yes                         |
+| transitive dev deps frozen             | yes                | no                          |
+| `composer install` repeatable          | yes                | no                          |
+| Dependabot still opens PRs             | yes                | yes                         |
+| diff size                              | large, lock churn  | tiny                        |
+| conflicts on parallel branches         | possible           | none                        |
+| tests run only against the locked tree | yes                | no                          |
 
 That last row is the one that matters for a library and it is the strongest argument
 against the lock. Both columns have a cost, and a decision-maker should see both.
