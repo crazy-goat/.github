@@ -80,37 +80,40 @@ runs. 2.6.5 added PHPStan 2.2.10 scope support but is not shown to run 2.2.16.
 ### Rollout
 
 Adding the group is the fix, and as of 2026-10-03 no repository has it — checked in all
-17. Three pull requests are open and red, and **the group does not fix them**: a group
-changes what Dependabot opens on its *next* run, where it **replaces** the open
-single-dependency pull requests with one combined bump. So the order is: add the group,
-let Dependabot open the grouped pull request, and close the ones it supersedes. What
-each of the three is actually blocked on:
+17.
 
-- `piper-php` #6 — bumps `phpstan/phpstan` 2.1.45 → 2.2.16 against a pinned
-  `rector/rector` 2.3.9. The grouped bump fixes this one, because it moves Rector too.
-- `rabbit-stream` #573 — widens `phpstan/phpstan` from `~2.1.0` to `~2.1.0 || ~2.2.0`,
-  against `rector/rector` `~2.4.0`. Same: the grouped bump fixes the crash.
-- `fdb-php` #134 — bumps `rector/rector` 2.6.3 → 2.6.7 only, and PHPStan is already on
-  2.2.16 here, so the group changes nothing for it. It needs a one-line code fix.
+**What already happened, on 2026-10-03, and is why the group is worth adding anyway.**
+Three Dependabot pull requests were stuck for exactly this reason. All three are now
+**closed**, each superseded by a hand-made pull request that moved both tools at once —
+which is what the group would have produced:
 
-Rebasing is not the answer either. `piper-php` #6 has been rebuilt and re-run three
-times (head SHAs `26b558f`, `2fe528c`, `af3b855`, all failing), the last after an
-explicit `@dependabot rebase` on 2026-10-03, and it stayed red — the blocker is a
-version pin in `composer.json`, not the base branch. No new upstream release is needed
-to unblock any of the three; Rector 2.6.7 is already out.
+| Closed, unmerged | Superseded by | What it took |
+|---|---|---|
+| `fdb-php` #134 (rector 2.6.3 → 2.6.7) | #136 | one line: `IfToNullCoalescingAssignRector` wants `??=` at `tests/Integration/RebootWorkerTest.php:113` |
+| `rabbit-stream` #573 (`phpstan` `~2.1.0` → `~2.1.0 \|\| ~2.2.0`) | #582 | three `method.alreadyNarrowedType` findings, plus removing a now-redundant property initializer |
+| `piper-php` #6 (`phpstan` 2.1.45 → 2.2.16) | #24 | nothing: 25 releases of Rector rules and `--dry-run` was empty |
+
+So the group is not needed to unblock those three — they are done. It is needed so the
+*next* phpstan bump arrives with a rector bump that can actually run next to it, instead
+of against whatever rector happens to be pinned.
+
+Note that a group changes what Dependabot opens on its **next** run. It does not absorb
+an already-open single-dependency pull request, and `@dependabot rebase` does not help
+either: `piper-php` #6 was rebuilt and re-run three times (head SHAs `26b558f`, `2fe528c`,
+`af3b855`, all failing), the last after an explicit rebase on 2026-10-03, and stayed red.
+The blocker was a version pin in `composer.json`, never the base branch.
 
 ### What the group does *not* do
 
 It does not make a PR green. A new Rector rule or a new PHPStan check can still need a
-code change, and then the grouped PR is where that change lands. Both of the two bump
-pull requests above are in exactly that state:
+code change, and then the grouped pull request is where that change lands — which is
+exactly what the three pull requests above needed:
 
-- `fdb-php` #134 is the smallest case. Rector 2.6.7 runs cleanly next to PHPStan 2.2.16
-  and reports one finding — `IfToNullCoalescingAssignRector` (added in 2.6.4) wants one
-  line changed in `tests/Integration/RebootWorkerTest.php:113` — while PHPStan reports
-  `[OK] No errors`.
-- `rabbit-stream` #573 also carries three PHPStan 2.2.16 findings that have nothing to do
-  with Rector: `method.alreadyNarrowedType` in `tests/Buffer/ReadBufferTest.php:441`,
+- The `fdb-php` case was the smallest: Rector 2.6.7 runs cleanly next to PHPStan 2.2.16
+  and reported one finding, `IfToNullCoalescingAssignRector` (added in 2.6.4), while
+  PHPStan reported `[OK] No errors`.
+- `rabbit-stream` also carried three PHPStan 2.2.16 findings with nothing to do with
+  Rector: `method.alreadyNarrowedType` in `tests/Buffer/ReadBufferTest.php:441`,
   `tests/Client/MessageTest.php:38` and `tests/E2E/SubscribeFilterE2ETest.php:106`.
 
 A grouped bump can also be larger than the single bump it replaces. `piper-php`'s

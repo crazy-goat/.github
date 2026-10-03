@@ -436,9 +436,12 @@ main() {
         if [ "$target_closed" -eq 0 ]; then
             # Print the milestone number the script already has, so the
             # command can be pasted as it is. And when --milestone was
-            # given explicitly, say what closing it actually does: this
-            # script keeps returning the milestone that was asked for, so
-            # closing it does NOT move the caller on to the next one.
+            # given explicitly, say what closing it actually does: only
+            # OPEN milestones are selected, so a closed one drops out of
+            # the list. The next run then exits EXIT_USAGE (2) as an
+            # unknown milestone, or EXIT_GH_ERROR (1) with "No open
+            # milestones found." if it was the only one open — it does not
+            # move the caller on to another milestone.
             local number="$target_number"
             [ -n "$number" ] || number="<number>"
             # A milestone title is free text: it can contain ", $, a backtick
@@ -459,7 +462,7 @@ main() {
             if [ -n "$MILESTONE" ]; then
                 after="$(printf 'You asked for --milestone=%s, so closing it does not make this script pick another one: drop the flag, or name a milestone that has issues.\n' "$MILESTONE")"
             else
-                after='Closing it is safe: the next run picks the next milestone.
+                after='Closing it is safe: the next run picks the next milestone, if another one is open. With none left it stops instead, and that is a separate thing to fix.
 '
             fi
             message="$(printf 'Milestone %s (#%s) has no issues at all (0 open, 0 closed) — there is nothing to release and nothing to pick. Either assign issues to it, or close it:\n\n  1. Assign issues:  gh issue edit <N> --milestone %s\n  2. Or close it:     gh api --method PATCH repos/%s/milestones/%s -f state=closed\n  3. Re-run this script afterwards.\n\n%s' \

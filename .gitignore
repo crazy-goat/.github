@@ -2,3 +2,5 @@
 # They are per-worktree state, never part of the standard.
 /findings.md
 /review.md
+# Worktree environment written by bin/worktree.sh, also never part of the standard.
+/.env.worktree

@@ -43,10 +43,9 @@ lint result depends on what that process has loaded and not only on the working 
 a local run and CI can disagree with no commit in between.
 
 **How** a loaded extension changes things differs per repository, so find out which
-case is yours before changing anything. None of the three PHP extensions below has a
-class-name collision — none of them shadows a class the working tree defines. But one of
-them turns `lint` **red on a developer's machine and green in CI**, one hides analysis
-errors, and one is only reached at runtime. None of them is harmless.
+case is yours before changing anything. We have three, and they fail in three different
+ways: one **makes names disappear**, one turns `lint` red on a developer's machine and
+green in CI, and one hides analysis errors. Measure yours.
 
 - **The extension breaks both tools, and CI cannot show it.** `ScanMePHP`:
   `NativeEncoderCore` is defined *only* by `php-ext/native_encoder.c`, and
@@ -71,7 +70,8 @@ errors, and one is only reached at runtime. None of them is harmless.
   Drop the quotes and nothing else: compare `php-zvec/php-ext/zvec_doc.cc:596`
   (`…, ZVecDoc, 0`) and `ladybug-php/ext/ladybug_arginfo.h:34`. Note that excluding the
   file in `phpstan.neon` does **not** protect you: `tests/ExtensionNameConsistencyTest.php`
-  still fails, because other files reference `NativeEncoder` and `NativeEncoderCore`.
+  still fails, because `src/QRCode.php:30` and
+  `tests/ExtensionNameConsistencyTest.php:7,118` reference `NativeEncoder` too.
   So there are two fixes, and the isolation below is only the first: isolate the tools
   *and* drop those quotes. Until both land, treat a local lint failure in this
   repository as possibly your own `php.ini`.
@@ -86,20 +86,31 @@ errors, and one is only reached at runtime. None of them is harmless.
   so a stub that has fallen behind the extension passes locally and fails in CI. Change
   a signature the stub *already* declares and the stub still wins; only missing entries
   are hidden. (`ladybug-php` #139 tracks keeping the two in agreement.)
-- **The extension is reached only at runtime.** `php-zvec`: `php-ext/` registers 15
-  types (12 classes, 3 interfaces) in the **global** namespace while `src/` is
-  `CrazyGoat\ZVec\`. PHPStan and Rector parse `src/` and never run the guard; what
-  breaks is the **test suite**, at `src/ZVec.php:9`, which returns early when
-  `extension_loaded('zvec')` so the barrel file never loads the FFI-only classes
-  (`php-zvec` #188).
+- **The extension and the library supply the same global names, but never at the same
+  time — and the gap between them disappears names.** `php-zvec`: the library is namespaced
+  `CrazyGoat\ZVec\`, but `src/ZVec.php` re-exports **16** types into the **global**
+  namespace with `class_alias` (lines 3235–3250) for backward compatibility. `php-ext/`
+  registers **15** globally (`INIT_CLASS_ENTRY`). **10 names are supplied by both**:
+  `ZVec`, `ZVecCollectionOptions`, `ZVecDoc`, `ZVecException`, `ZVecRerankedDoc`,
+  `ZVecReRanker`, `ZVecRrfReRanker`, `ZVecSchema`, `ZVecVectorQuery`, `ZVecWeightedReRanker`.
 
-A genuine collision — the extension defining the same class name the library defines in
-`src/`, so the analysis silently runs against the installed build instead — is a fourth
-shape, and it would move findings onto code nobody touched. None of our three
-repositories has it, but check before assuming yours does not either: compare the classes
-`php-ext` registers with the `src/` namespace in `composer.json`. The case above that
-needs fixing first is not this one, though — a lint gate that is red locally and green in
-CI is found on the first run; a shadowed class is not found at all.
+  Those 10 are fine, because the two are **mutually exclusive**: `src/ZVec.php:9-11`
+  returns immediately when `extension_loaded('zvec')`, so the alias block never runs while
+  the extension is loaded. With the extension you get the extension's classes; without it,
+  the library's aliases. Never both, so there is no redeclaration and no silent shadowing.
+
+  The real defect is the **asymmetry**: 6 names the library aliases and the extension does
+  *not* provide — `ZVecCollectionStats`, `ZVecFieldSchema`, `ZVecIndexParams`,
+  `ZVecQueryInterface`, `ZVecGroupByVectorQuery`, `ZVecDocIterator` — **do not exist at
+  all** when the extension is loaded. That is what `php-zvec` #188 means by "shadows FFI
+  classes": its subject is a **pre-installed** v0.4.10 build enabled in `php.ini`, and the
+  suite run in that state cannot see those six.
+
+  So compare the two name sets, and then check **which of the two is active when**. If they
+  are exclusive by construction, the shared names are fine and only the ones on one side
+  matter — and which side is the trap depends on the guard. Getting this backwards in
+  either direction wastes an afternoon: read the `extension_loaded` guard before you
+  conclude anything about shadowing.
 
 ### Isolating the tools, when a repository needs it
 
@@ -125,14 +136,33 @@ Use an **environment variable** instead, because those are inherited:
   at a copy of that directory with the extension's `.ini` left out, so everything else
   stays available.
 
-Replacing `php.ini` takes its settings with it, so carry them into the generated ini:
-**`extension_dir`** (a Homebrew/pecl setup sets it in `php.ini` while the `conf.d`
-entries name their extension without a path, so without it those extensions fail to
-load), **`memory_limit`** (otherwise the built-in 128M applies), and **FFI** where the
-analysis would otherwise have none. `php-zvec`'s `bin/lint.sh` does all of that in one
-`php_analysis` helper; ask for FFI in the CI `lint` job as well (`extensions: ffi`).
-Note the residual gap this leaves: an `extension=` line in `php.ini` no longer reaches
-the tools, one in a `conf.d` file still would.
+Replacing `php.ini` takes its settings with it, so carry **`extension_dir`** into the
+generated ini (a Homebrew/pecl setup sets it in `php.ini` while the `conf.d` entries name
+their extension without a path, so without it those extensions fail to load) and ask for
+**FFI** where the analysis would otherwise have none. `php-zvec`'s `bin/lint.sh` does that
+in one `php_analysis` helper; ask for FFI in the CI `lint` job as well
+(`extensions: ffi`). Note the residual gap this leaves: an `extension=` line in `php.ini`
+no longer reaches the tools, one in a `conf.d` file still would.
+
+Do carry **`memory_limit`** — this one is easy to get backwards, because the two tools
+handle it in opposite ways:
+
+- **PHPStan mirrors whatever the analysing process has.** `ProcessHelper::getWorkerCommand()`
+  appends `memory_limit=` + `ini_get('memory_limit')` to the worker command, but **only**
+  when `--memory-limit` was not passed. So it does not choose a sane limit, it propagates
+  whatever it was given. A generated ini with no `memory_limit` therefore runs PHPStan at
+  PHP's built-in **128M** instead of the **1G** the machine's own `php.ini` provides, and
+  the workers inherit that. Measured on phpstan 2.2.16: generated ini without the setting
+  → 128M in the analysing process; the same ini with `-d memory_limit=-1` → -1; the
+  machine's own `php.ini` → 1G. `php-zvec/bin/lint.sh:54-55` documents this at exactly the
+  point where it matters and sets it at line 73.
+- **Rector overrides it anyway.** Every process — main and workers — bootstraps through
+  `vendor/rector/rector/bin/rector.php`, which does `@\ini_set('memory_limit', '-1')` at
+  line 19.
+
+So put it in the generated ini: PHPStan needs it, and Rector is indifferent. A `-d` flag
+does not work for PHPStan, because PHPStan reads `ini_get()` from the process it is
+building a command *for*, and a `-d` on your own command line is not in `php_ini_loaded_file()`.
 
 When a lint run disagrees with CI, `php -m` under the same ini settings is the first
 thing to check — run any other way it answers a different question.
@@ -161,8 +191,11 @@ No composer.lock file present. Updating dependencies to latest instead of
 installing from lock file. See https://getcomposer.org/install for more information.
 ```
 
-There is a concrete case: in `ScanMePHP` a newer Rector (2.6.6) reported
-`FlipNegatedTernaryInstanceofRector` in code nobody had changed.
+There is a concrete case: `ScanMePHP` #251 records a newer Rector (2.6.6) reporting
+`FlipNegatedTernaryInstanceofRector` on a branch whose code had not been touched, because
+that repository gitignores its lock and CI resolved a newer tool than the one last tested
+locally. That is the whole mechanism in one issue, and it is why the lock is the fix and
+not a version bump.
 
 ### Proposal: commit `composer.lock`, and keep a caret range in `require-dev`
 
@@ -177,8 +210,8 @@ The two options are not really alternatives; they do different jobs.
   lock freezes transitive dependencies.
 
 Dependabot updates exact pins as happily as ranges, so the range is not there to make
-Dependabot work: `piper-php` #6 took an exact `"phpstan/phpstan": "2.1.45"` to `2.2.16`
-and `fdb-php` #134 took an exact `"rector/rector": "2.6.3"` to `2.6.7`.
+Dependabot work: Dependabot opened pull requests against exact `"phpstan/phpstan": "2.1.45"`
+in `piper-php` and exact `"rector/rector": "2.6.3"` in `fdb-php`, without complaint.
 
 ### Why the lock, and not exact pins
 
@@ -198,8 +231,8 @@ Two honest caveats, because they cut the other way:
 - Rector is not a good example of a moving transitive: its own `composer.json`
   requires only `php` and `phpstan/phpstan` (2.6.7 requires `php ^7.4|^8.0` and
   `phpstan/phpstan ^2.2.14`, nothing else) and ships the rest **bundled** inside the
-  package, which is why `vendor/rector/rector/vendor/illuminate/...` shows up in the
-  stack trace. `php-cs-fixer` and `phpunit` are the dependencies that actually drift.
+  package rather than resolved from the lock. `php-cs-fixer` and `phpunit` are the
+  dependencies that actually drift.
 
 That is the whole case for the lock: not the one incident, but every future release
 of the other dev tools, pinned without a human editing a version number each time.
@@ -240,7 +273,7 @@ against the lock. Both columns have a cost, and a decision-maker should see both
   "composer.lock is tracked on purpose: dependabot's composer ecosystem needs it to
   open security-update PRs for the worker".
 - `fdb-php` is the counter-example in miniature. It pins `phpstan/phpstan` to exactly
-  `2.2.16` and `rector/rector` to exactly `2.6.3` and still gitignores the lock. Its
+  `2.2.16` and `rector/rector` to exactly `2.6.7` and still gitignores the lock. Its
   `master` is green today, so exact pins are not worthless — but they hold only
   because someone hand-edited two numbers, and nothing keeps them in step with the
   transitive tree.
