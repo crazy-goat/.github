@@ -12,7 +12,8 @@ Every repository has Dependabot turned on.
   `ci(deps)` for `github-actions`.
 - Dependabot PRs go through the same `ci-ok` check. Workflows must not block
   `dependabot[bot]` (for example through an actor check).
-- `phpstan/phpstan` and `rector/rector` are in one group (see below).
+- `phpstan/phpstan` and `rector/rector` belong in one group, because their versions
+  are not independently selectable (see below). **No repository has this group yet.**
 
 ## Group: `php-static-analysis` (phpstan + rector)
 
@@ -58,11 +59,12 @@ The pair that works today is **rector 2.6.7 + phpstan 2.2.16** (proved by `fdb-p
 of fatalling, and `==> phpstan` reports `[OK] No errors`; the job then fails only on
 the `--dry-run` diff, see below).
 
-A red Dependabot PR is not just noise: Dependabot keeps the same pull request open and
-rebases it onto newer releases rather than opening a second one (rabbit-stream #573
-was rerun three times on 2026-10-02, never replaced), so the bump cannot land until
-someone fixes the PR. Grouping means a PHPStan bump arrives with the Rector bump it
-needs, in one PR that can be reviewed on its own terms.
+A red Dependabot PR is not just noise: it stays open and is rebuilt, so the bump
+cannot land until someone fixes the PR. What is observed on `rabbit-stream` #573 is
+three runs on 2026-10-02 for the same target version on three different head SHAs
+(`37a1074`, `9ef8654`, `0b2ca3c`), never replaced by a new pull request. Grouping means
+a PHPStan bump arrives with the Rector bump it needs, in one PR that can be reviewed on
+its own terms.
 
 ### The rule that follows
 
@@ -77,20 +79,48 @@ runs. 2.6.5 added PHPStan 2.2.10 scope support but is not shown to run 2.2.16.
 
 ### Rollout
 
-Adding the group is the fix, and until a repository has it the rule above is not yet
-applied anywhere. Three pull requests started this and are still open and red:
-`piper-php` #6 (PHPStan 2.1.45 → 2.2.16 against Rector 2.3.9), `rabbit-stream` #573 and
-`fdb-php` #134. Add the group first, then let Dependabot rebase them — that is what
-turns each of them into a PR that can go green.
+Adding the group is the fix, and as of 2026-10-03 no repository has it — checked in all
+17. Three pull requests are open and red, and **the group does nothing for any of them.**
+A group changes what Dependabot opens on its *next* run; it does not touch a pull request
+that is already open, and it cannot absorb one:
+
+- `piper-php` #6 — bumps `phpstan/phpstan` 2.1.45 → 2.2.16 against a pinned
+  `rector/rector` 2.3.9.
+- `rabbit-stream` #573 — widens `phpstan/phpstan` from `~2.1.0` to `~2.1.0 || ~2.2.0`,
+  against `rector/rector` `~2.4.0`.
+- `fdb-php` #134 — bumps `rector/rector` 2.6.3 → 2.6.7 only. PHPStan is already on
+  2.2.16 here, so there is nothing for the group to bring along.
+
+Rebasing does not help either. `piper-php` #6 has been rebuilt and re-run three times
+(head SHAs `26b558f`, `2fe528c`, `af3b855`, all failing), the last after an explicit
+`@dependabot rebase` on 2026-10-03, and it stayed red — the blocker is a version pin in
+`composer.json`, not the base branch.
+
+So the group pays off on the **next** bump, not on these. The order is: add the group,
+close the superseded single-dependency pull requests, and let Dependabot open the
+combined one.
 
 ### What the group does *not* do
 
-It does not make the PR green. A new Rector rule or a new PHPStan check can still
-need a code change, and then the grouped PR is where that change lands. `fdb-php` #134
-is exactly this: Rector 2.6.7 runs cleanly next to PHPStan 2.2.16 and fails only
-because `IfToNullCoalescingAssignRector` (added in 2.6.4) wants one line changed in
-`tests/Integration/RebootWorkerTest.php:113`. Grouping turns "two permanently red
-PRs" into "one PR that needs a small fix".
+It does not make a PR green. A new Rector rule or a new PHPStan check can still need a
+code change, and then the grouped PR is where that change lands. Both of the two bump
+pull requests above are in exactly that state:
+
+- `fdb-php` #134 is the smallest case. Rector 2.6.7 runs cleanly next to PHPStan 2.2.16
+  and reports one finding — `IfToNullCoalescingAssignRector` (added in 2.6.4) wants one
+  line changed in `tests/Integration/RebootWorkerTest.php:113` — while PHPStan reports
+  `[OK] No errors`.
+- `rabbit-stream` #573 also carries three PHPStan 2.2.16 findings that have nothing to do
+  with Rector: `method.alreadyNarrowedType` in `tests/Buffer/ReadBufferTest.php:441`,
+  `tests/Client/MessageTest.php:38` and `tests/E2E/SubscribeFilterE2ETest.php:106`.
+
+A grouped bump can also be larger than the single bump it replaces. `piper-php`'s
+`rector.php` has no `->withSkip()` at all and analyses four paths (`src`, `examples`,
+`bin`, `tests`) with the `DEAD_CODE`, `CODE_QUALITY`, `TYPE_DECLARATION`,
+`PRIVATIZATION` and `EARLY_RETURN` sets, so taking Rector from 2.3.9 to 2.6.7 is 19 patch
+releases across a minor bump and every rule added on the way applies to all four paths.
+Expect more than one changed file, and budget for a fix pass and a review of the diff —
+not for a version-line edit.
 
 ### Why PHP-CS-Fixer is not in the group
 

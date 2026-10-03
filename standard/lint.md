@@ -35,26 +35,75 @@ PHP-CS-Fixer when a repository is next touched.
 
 ## When the project is itself a PHP extension
 
-A repository that builds a PHP extension can end up with an older build of that
-same extension installed on a contributor's machine (a leftover `make install`, a
-packaged release, an `extension=` line in a `php.ini`). The loaded extension
-defines the very class names that also live under `src/`, and PHP resolves those
-to the loaded extension's classes.
+A repository that builds a PHP extension can end up with a build of that extension
+installed on a contributor's machine: a leftover `make install`, a release install, an
+`extension=` line in `php.ini`, or an `.ini` in the scan directory. It then loads into
+**every** `php` on that machine. PHPStan and Rector run *inside* a PHP process, so the
+lint result depends on what that process has loaded and not only on the working tree —
+a local run and CI can disagree with no commit in between.
 
-PHPStan and Rector run *inside* a PHP process, so they see what that process has
-loaded, not only what is on disk: the analysis and the refactors are then run
-against classes the working tree never provided, and findings point at code the
-diff did not touch (or the class under `src/` is simply not found). The same
-shadowing breaks the test suite, usually with a `Class "..." not found` for a
-class that is right there in `src/`.
+**How** a loaded extension changes the analysis differs per repository. The
+class-name collision is one shape, not the rule, and the isolation you need depends
+on which one is yours.
 
-Run PHPStan and Rector with the project's own extension **not** loaded —
-`php -n vendor/bin/phpstan analyse`, the same for Rector, or an ini that does not
-load it — and keep that in `bin/lint.sh`, so humans, agents and CI all get the
-same view. `-n` ignores every `php.ini`, so check that the extensions the project
-genuinely needs are still available (many are compiled in, some are not). A
-loaded extension is invisible in the command line, so document the requirement in
-`AGENTS.md` too — the tests need the same treatment as the linters.
+- **The extension registers the library's own class names.** PHP resolves those names
+  to the loaded extension, so the analysis runs against the installed build instead of
+  the working tree and findings point at code the diff never touched. This is
+  `ScanMePHP`: `php-ext/native_encoder.c` registers
+  `CrazyGoat\ScanMePHP\NativeEncoderCore`, the same namespace as `src/`.
+- **The extension's names live in a separate namespace and the analysis reads a stub.**
+  No collision, but the loaded extension **hides what the stub omits**. This is
+  `ladybug-php`: `ext/` registers seven classes under `Ladybug\Ext\` while the library
+  is `Ladybug\`, and `phpstan.neon` analyses `src/` against
+  `stubs/ladybug-ext.stub.php`, which declares those seven classes plus the 21 global
+  `ladybug_*` functions. Delete `Result` from the stub, or `ladybug_version()`, and
+  PHPStan reports "class not found" / "function not found" with no extension and
+  nothing at all with it — so a stub that has fallen behind the extension passes
+  locally and fails in CI. Change a signature the stub *already* declares and the stub
+  still wins: only missing entries are hidden. (`ladybug-php` #139 tracks keeping the
+  two in agreement.)
+- **Neither — the extension is only reached at runtime.** This is `php-zvec`: its
+  `php-ext/` registers 15 types (12 classes, 3 interfaces) in the **global** namespace
+  while `src/` is `CrazyGoat\ZVec\`, so there is no collision, and PHPStan and Rector
+  parse `src/` without ever running the guard. What breaks there is the **test
+  suite**, at runtime: `src/ZVec.php:9` returns early when
+  `extension_loaded('zvec')`, so the barrel file never loads the FFI-only classes
+  (`php-zvec` #188).
+
+### Isolating the tools, when a repository needs it
+
+Not with `php -n`. It looks right and it is not:
+
+- it drops the whole ini scan directory, so on a `setup-php` image PHPStan loses `Phar`
+  and Rector loses `PhpToken` and **both fail to start** with `Class "Phar" not found`
+  and `Class "PhpToken" not found` — which is what happened on the first push of
+  `php-zvec` #259;
+- and it does not reach the processes PHPStan starts for itself. PHPStan restarts with
+  `PHP_BINARY -d …` and spawns parallel workers, neither carrying `-n`, so those
+  processes load `php.ini` again (seen with `ps -A` during a run).
+
+Use an **environment variable** instead, because those are inherited:
+
+- `PHPRC` for an extension enabled in `php.ini`. Point it at an ini generated per run.
+- `PHP_INI_SCAN_DIR` for an extension enabled as a file in the scan directory: point it
+  at a copy of that directory with the extension's `.ini` left out, so everything else
+  stays available.
+
+Replacing `php.ini` takes its settings with it, so carry them into the generated ini:
+**`extension_dir`** (a Homebrew/pecl setup sets it in `php.ini` while the `conf.d`
+entries name their extension without a path, so without it those extensions fail to
+load), **`memory_limit`** (otherwise the built-in 128M applies), and **FFI** where the
+analysis would otherwise have none. `php-zvec`'s `bin/lint.sh` does all of that in one
+`php_analysis` helper; ask for FFI in the CI `lint` job as well (`extensions: ffi`).
+
+When a lint run disagrees with CI, `php -m` under the same ini settings is the first
+thing to check — run any other way it answers a different question.
+
+A loaded extension is invisible in the command line, so document the requirement in
+`AGENTS.md` too: the test suite needs the same treatment as the linters. Say there
+which of the three shapes above applies, and do not claim the isolation fixed a wrong
+result unless you can point at one — isolating the tools removes a machine dependency,
+it does not by itself prove anything was wrong before.
 
 ## PHP tool versions: `composer.lock` (proposed — needs Piotr's sign-off)
 
@@ -64,17 +113,17 @@ something else is not wrong yet.
 
 The standard rollout left one question open: several PHP libraries gitignore
 `composer.lock`, so Rector / PHPStan / PHP-CS-Fixer versions float in CI and a tool
-release can turn `lint` red without a commit. No repository is wrong for that yet;
-`ScanMePHP` #251 carries the question. It is worse than theory: in `fdb-php` and
-`rabbit-stream` the job that needs the dev tools runs `composer install`, and with no
-lock file Composer 2 turns that into a full update against packagist and says so:
+release can turn `lint` red without a commit. `ScanMePHP` #251 carries the question.
+It is worse than theory: in `fdb-php` and `rabbit-stream` the job that needs the dev
+tools runs `composer install`, and with no lock file Composer 2 turns that into a full
+update against packagist and says so:
 
 ```
 No composer.lock file present. Updating dependencies to latest instead of
-installing from lock file.
+installing from lock file. See https://getcomposer.org/install for more information.
 ```
 
-`ScanMePHP` #251 has the concrete loss: a newer Rector (2.6.6) reported
+It has the concrete loss: in `ScanMePHP` a newer Rector (2.6.6) reported
 `FlipNegatedTernaryInstanceofRector` in code nobody had changed.
 
 ### Proposal: commit `composer.lock`, and keep a caret range in `require-dev`
@@ -85,9 +134,13 @@ exact version in `require-dev` — keep `^` or `~` there.
 The two options are not really alternatives; they do different jobs.
 
 - The **range** in `require-dev` is the compatibility claim: "this code works with
-  PHPStan 2.x". Dependabot needs a range it is allowed to widen.
+  PHPStan 2.x".
 - The **lock file** is reproducibility: "CI installs these exact bytes". Only the
   lock freezes transitive dependencies.
+
+Dependabot updates exact pins as happily as ranges, so the range is not there to make
+Dependabot work: `piper-php` #6 took an exact `"phpstan/phpstan": "2.1.45"` to `2.2.16`
+and `fdb-php` #134 took an exact `"rector/rector": "2.6.3"` to `2.6.7`.
 
 ### Why the lock, and not exact pins
 
@@ -95,8 +148,9 @@ A lock file and exact pins both stop the tool versions from floating, but they d
 close the same gap, and the difference is what this proposal is actually about.
 
 Exact pins name only the packages someone remembered. Every other dependency still
-resolves fresh on every run, so a `require-dev` full of exact versions still pulls a
-moving `php-cs-fixer`, `phpunit`, and their transitive trees.
+resolves fresh on every run, so a `require-dev` full of exact versions still leaves
+everything it did not name free to move — the transitive trees, and any tool that was
+not pinned in the first place.
 
 Two honest caveats, because they cut the other way:
 
@@ -104,18 +158,24 @@ Two honest caveats, because they cut the other way:
   pins *would* have caught it. `fdb-php` is green on exactly that basis. It is not
   evidence against pins in general.
 - Rector is not a good example of a moving transitive: its own `composer.json`
-  requires only `php` and `phpstan/phpstan` and ships the rest **bundled** inside the
-  package (`vendor/rector/rector/vendor/illuminate/...` shows up in the stack trace).
-  `php-cs-fixer` and `phpunit` are the dependencies that actually drift.
+  requires only `php` and `phpstan/phpstan` (2.6.7 requires `php ^7.4|^8.0` and
+  `phpstan/phpstan ^2.2.14`, nothing else) and ships the rest **bundled** inside the
+  package, which is why `vendor/rector/rector/vendor/illuminate/...` shows up in the
+  stack trace. `php-cs-fixer` and `phpunit` are the dependencies that actually drift.
 
 That is the whole case for the lock: not the one incident, but every future release
 of the other dev tools, pinned without a human editing a version number each time.
 
-The usual "a library must not commit a lock file" advice does not apply here. That
-advice exists so an *application* stays reproducible without shipping its users'
-resolved versions; a library has no lock of its own to keep, and a committed lock in
-one is never read by anyone who installs it as a dependency. It costs consumers
-nothing and only pins our own CI.
+A committed lock is never read by anyone who installs the library as a dependency —
+Composer resolves that consumer's own tree from their `require` ranges. So the lock
+cannot change what a consumer gets. It does change what the library's **own tests**
+run against, and that is the cost that decides the question for a library: a locked
+`composer install` in CI stops exercising the newest versions the `require` ranges
+hand to users, so a breaking upstream release is found by a consumer rather than by
+this repository. The usual mitigation is a second CI job that runs the tests against a
+freshly resolved tree (`composer update`, and `composer update --prefer-lowest` for
+the floor), which keeps the lock as the fast, reproducible default and still tests the
+edges.
 
 ### The trade-off, stated
 
@@ -127,10 +187,10 @@ nothing and only pins our own CI.
 | Dependabot still opens PRs      | yes                | yes                         |
 | diff size                       | large, lock churn  | tiny                        |
 | conflicts on parallel branches  | possible           | none                        |
+| **tests run only against the locked tree** | **yes** | no              |
 
-The honest cost is conflicts in a large `composer.lock` when two branches add
-different dependencies. That is a normal conflict in a file whose meaning is obvious,
-and it is cheaper than a red `lint` nobody can reproduce.
+That last row is the one that matters for a library and it is the strongest argument
+against the lock. Both columns have a cost, and a decision-maker should see both.
 
 ### What the repositories already show
 

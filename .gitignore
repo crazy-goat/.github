@@ -1,0 +1,4 @@
+# Scratch files the workflow uses to talk between the coder and the reviewer.
+# They are per-worktree state, never part of the standard.
+/findings.md
+/review.md
