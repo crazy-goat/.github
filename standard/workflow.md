@@ -95,7 +95,8 @@ time. See [Worktree-safe repositories](#worktree-safe-repositories).
 - Update `CHANGELOG.md` under `[Unreleased]` and the docs.
 - **Commit** with [Conventional Commits](https://www.conventionalcommits.org/)
   (`fix: handle empty response (#42)`). **Do not push.**
-- On a second or later round, first read `review.md` and fix every open point.
+- On a second or later round, first read `review.md` and fix every open point. When a
+  point lists several hits of one pattern, fix every hit, not only the first one.
 
 **Coder output contract.** The coder always reports: (1) the changed files, (2) the
 biggest problem met on the way, and (3) every bug or weak spot noticed, **including ones
@@ -111,6 +112,13 @@ leftovers (debug code, commented-out code), and that everything is in English.
 
 - It reads `review.md` first. For every earlier point it writes: **fixed**, **still
   present**, or **not a real problem** (with evidence). Then it looks for new problems.
+- From round 2 on, it looks for new problems first in the commits since the last
+  reviewed commit. A new point in code that an earlier round already saw is allowed only
+  for a real defect, marked "missed in round K". Style notes on that code do not block.
+- Each problem names its pattern (the kind of mistake). The reviewer searches the diff and
+  the touched files for the same pattern and lists every hit, so one round fixes them all.
+- Each round adds a `## Round K` section with a `Reviewed: <commit>` line to the end of
+  `review.md` and keeps the earlier rounds.
 - New in-scope problems go to `review.md`. New out-of-scope problems go to
   `findings.md` (role `review`), as in step 3.
 - **Every point gets an answer**, including nits. Silence is not an answer.
